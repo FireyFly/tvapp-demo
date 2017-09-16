@@ -13,7 +13,15 @@ function performSearch(query, resultsComponent) {
   }
 
   fetch(`http://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(query).replace(/%20/g,'+')}&embed=episodes`)
-    .then(res => (console.warn(res.status), res.json()))
+    .then(res => {
+      if (!res.ok) {
+        let err = new Error(res.statusText)
+        err.code = res.status
+        throw err
+      }
+      return res
+    })
+    .then(res => res.json())
     .then(res => {
       let episodes = res._embedded.episodes.map(e => ({
         key:     e.id,
@@ -39,7 +47,16 @@ function performSearch(query, resultsComponent) {
 
       resultsComponent.setState({ isLoading:false, title:res.name, sections })
     })
-    .catch(err => console.warn(err))
+    .catch(err => {
+      switch (err.code) {
+        case 404:
+          // No result
+          resultsComponent.setState({ isLoading:false, title:"", sections:[] })
+          break
+        default:
+          console.warn(err, err.code)
+      }
+    })
 }
 
 //-- Root component -------------------------------------------------
