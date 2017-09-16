@@ -4,59 +4,50 @@ import SearchField from './lib/SearchField.js'
 import ResultsView from './lib/ResultsView.js'
 
 //-- performSearch --------------------------------------------------
-const noPictureURI = 'http://firefly.nu/up/me.jpg'
-function performSearch(query, resultsComponent) {
+const placeholderIcon = require('./res/placeholder.png')
+async function performSearch(query) {
+  const NO_RESULTS = { isLoading:false, title:"", sections:[] }
+
   // Skip API request if the search query is empty
-  if (query.trim().length == 0) {
-    resultsComponent.setState({ isLoading:false, title:"", sections:[] })
-    return
+  if (query.trim().length == 0) return NO_RESULTS
+
+  let res = await fetch(`http://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(query).replace(/%20/g,'+')}&embed=episodes`)
+
+  // Check for no search result
+  if (res.status == 404) return NO_RESULTS
+
+  if (!res.ok) {
+    let err = new Error(res.statusText)
+    err.code = res.status
+    throw err
   }
 
-  fetch(`http://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(query).replace(/%20/g,'+')}&embed=episodes`)
-    .then(res => {
-      if (!res.ok) {
-        let err = new Error(res.statusText)
-        err.code = res.status
-        throw err
-      }
-      return res
-    })
-    .then(res => res.json())
-    .then(res => {
-      let episodes = res._embedded.episodes.map(e => ({
-        key:     e.id,
-        name:    e.name,
-        season:  e.season,
-        episode: e.number,
-        image:   e.image == null? noPictureURI : e.image.medium
-      }))
+  // We're good; parse JSON and process API response
+  let json = await res.json()
 
-      // Maps season numbers to episodes
-      let seasonMap = {}
-      for (let episode of episodes) {
-        let key = episode.season
-        if (seasonMap[key] == null) seasonMap[key] = []
-        seasonMap[key].push(episode)
-      }
+  let episodes = json._embedded.episodes.map(e => ({
+    key:     e.id,
+    name:    e.name,
+    season:  e.season,
+    episode: e.number,
+    image:   e.image == null? placeholderIcon : {uri: e.image.medium}
+  }))
 
-      // Sections for the results SectionList
-      let sections = Object.keys(seasonMap).map(Number)
-                           .sort((a,b) => a-b)
-                           .map(num => ({ data:  seasonMap[num],
-                                          title: "Season " + num }))
+  // Maps season numbers to episodes
+  let seasonMap = {}
+  for (let episode of episodes) {
+    let key = episode.season
+    if (seasonMap[key] == null) seasonMap[key] = []
+    seasonMap[key].push(episode)
+  }
 
-      resultsComponent.setState({ isLoading:false, title:res.name, sections })
-    })
-    .catch(err => {
-      switch (err.code) {
-        case 404:
-          // No result
-          resultsComponent.setState({ isLoading:false, title:"", sections:[] })
-          break
-        default:
-          console.warn(err, err.code)
-      }
-    })
+  // Sections for the results SectionList
+  let sections = Object.keys(seasonMap).map(Number)
+                       .sort((a,b) => a-b)
+                       .map(num => ({ data:  seasonMap[num],
+                                      title: "Season " + num }))
+
+  return { isLoading:false, title:json.name, sections }
 }
 
 //-- Root component -------------------------------------------------
@@ -66,7 +57,9 @@ export default class App extends Component {
     return <View style={styles.container}>
              <SearchField style={{margin: 10}}
                onPreSearch={ () => resultsView.setState({ isLoading: true }) }
-               onSearch={ query => performSearch(query, resultsView) } />
+               onSearch={ query => performSearch(query)
+                                     .then(res => resultsView.setState(res))
+                                     .catch(err => console.warn(err)) } />
              <ResultsView onConstruct={ obj => {resultsView = obj} } />
            </View>
   }
