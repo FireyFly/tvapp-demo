@@ -6,7 +6,7 @@ import ResultsView from './lib/ResultsView.js'
 //-- performSearch --------------------------------------------------
 const placeholderIcon = require('./res/placeholder.png')
 async function performSearch(query) {
-  const NO_RESULTS = { isLoading:false, title:"", sections:[] }
+  const NO_RESULTS = { title: "", sections: [] }
 
   // Skip API request if the search query is empty
   if (query.trim().length == 0) return NO_RESULTS
@@ -47,20 +47,29 @@ async function performSearch(query) {
                        .map(num => ({ data:  seasonMap[num],
                                       title: "Season " + num }))
 
-  return { isLoading:false, title:json.name, sections }
+  return { title: json.name, sections }
 }
 
 //-- Root component -------------------------------------------------
 export default class App extends Component {
+  constructor(props) {
+    super(props)
+    this.state = {
+      query:     "",
+      isLoading: false,
+      results:   { title: "", sections: [] },
+    }
+  }
   render() {
-    let resultsView = null
     return <View style={styles.container}>
              <SearchField style={{margin: 10}}
-               onPreSearch={ () => resultsView.setState({ isLoading: true }) }
+               onPreSearch={ query => this.setState({ isLoading: true, query }) }
                onSearch={ query => performSearch(query)
-                                     .then(res => resultsView.setState(res))
+                                     .then(res => this.setState({ isLoading: false, results: res }))
                                      .catch(err => console.warn(err)) } />
-             <ResultsView onConstruct={ obj => {resultsView = obj} } />
+             <ResultsView query={this.state.query}
+                          isLoading={this.state.isLoading}
+                          results={this.state.results} />
            </View>
   }
 }
